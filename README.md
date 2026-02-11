@@ -96,6 +96,77 @@ Webhook → Signature Verify → Kafka Publish → BullMQ Queue → Processor
 > User: "deposit 50k"
 > Bot: "💰 To deposit 50000 NGN, transfer to..."
 
+### ✅ Stage 6: NEAR Protocol Migration - Stage 1
+
+#### Overview
+
+Stage 1 of the complete migration from Afriex to NEAR Protocol for remittance infrastructure. This stage establishes the foundation for private, secure remittances powered by Shade Agent on NEAR.
+
+#### Features Implemented
+
+- **NEAR SDK Integration**: `near-api-js` and wallet selector libraries
+- **Testnet Configuration**: Full NEAR testnet setup (RPC, wallet, helper, explorer URLs)
+- **Wallet Connection Flow**: MyNEARWallet deep link generation and callback handling
+- **Database Schema**: Added `near_account_id` column to users table
+- **Onboarding Integration**: NEAR wallet connection step after PIN setup
+- **Security**: Rate-limited callback endpoint, state validation, expiry checks
+
+#### NEAR Onboarding Flow
+
+```
+Name → Email → PIN → NEAR Wallet Connect → KYC → Complete
+                            ↓
+                    MyNEARWallet Deep Link
+                            ↓
+                    Callback Updates DB
+```
+
+#### Technical Details
+
+- **Deep Link Generation**: Encodes user phone in base64 state parameter
+- **State Validation**: 5-minute expiry window, structure validation
+- **Account Verification**: Checks NEAR account exists before linking
+- **Session Management**: Redis-based tracking of connection state
+
+#### NEAR Module Structure
+
+```
+src/near/
+├── near.module.ts         # NestJS module registration
+├── near.service.ts        # Core NEAR logic (connect, balance, verify)
+├── near.controller.ts     # REST endpoints (callback, test balance)
+├── near.interface.ts      # TypeScript interfaces and DTOs
+└── near.service.spec.ts   # Unit tests
+```
+
+#### Environment Variables
+
+```env
+# NEAR Protocol (Testnet)
+NEAR_NETWORK_ID=testnet
+NEAR_NODE_URL=https://rpc.testnet.near.org
+NEAR_WALLET_URL=https://wallet.testnet.near.org
+NEAR_HELPER_URL=https://helper.testnet.near.org
+NEAR_EXPLORER_URL=https://explorer.testnet.near.org
+```
+
+#### Migration Notes
+
+> [!IMPORTANT]
+> **Stage 1 is Foundation Only**
+>
+> - This stage only adds NEAR account linking
+> - Afriex integration remains active for now
+> - Future stages will implement NEAR-based remittances
+> - No mainnet configuration yet - testnet only
+
+#### Next Stages (Planned)
+
+- **Stage 2**: NEAR intent creation and Shade Agent spawning
+- **Stage 3**: Replace Afriex deposits with NEAR deposits
+- **Stage 4**: Replace Afriex withdrawals with NEAR-based payouts
+- **Stage 5**: Full Afriex removal and mainnet deployment
+
 ## 🛠️ Tech Stack
 
 - **Framework**: NestJS 11

@@ -24,6 +24,8 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@near-wallet-selector/core": "^10.1.4",
+    "@near-wallet-selector/my-near-wallet": "^10.1.4",
     "@nestjs/axios": "^4.0.1",
     "@nestjs/bull": "^11.0.4",
     "@nestjs/common": "^11.0.1",
@@ -48,6 +50,7 @@
     "helmet": "^8.1.0",
     "imagekit": "^6.0.0",
     "ioredis": "^5.9.2",
+    "near-api-js": "^7.1.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",

@@ -15,6 +15,7 @@ import { AfriexModule } from "../afriex/afriex.module";
 import { DatabaseModule } from "../database/database.module";
 import { PaymentsModule } from "../payments/payments.module";
 import { CommonModule } from "../common/common.module";
+import { NearModule } from "../near/near.module";
 
 import { NotificationsProcessor } from "./processors/notifications.processor";
 import { QueuesModule } from "../queues/queues.module";
@@ -30,6 +31,7 @@ import { QueuesModule } from "../queues/queues.module";
     AfriexModule,
     DatabaseModule,
     forwardRef(() => PaymentsModule),
+    NearModule,
     QueuesModule,
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
   ],

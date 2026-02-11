@@ -39,6 +39,7 @@ export interface SessionData {
     | "email"
     | "pin"
     | "confirm_pin"
+    | "near_connect"
     | "kyc_document"
     | "kyc"
     | "complete";

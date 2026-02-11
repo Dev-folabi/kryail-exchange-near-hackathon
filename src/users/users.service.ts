@@ -42,10 +42,10 @@ export class UsersService {
       .where(eq(users.id, id));
   }
 
-  async updateAfriexId(id: number, afriexId: string) {
+  async updateNearAccountId(id: number, nearAccountId: string) {
     await this.db
       .update(users)
-      .set({ afriexCustomerId: afriexId })
+      .set({ nearAccountId: nearAccountId })
       .where(eq(users.id, id));
   }
 }

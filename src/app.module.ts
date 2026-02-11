@@ -11,6 +11,7 @@ import { PaymentsModule } from "./payments/payments.module";
 import { WebhooksModule } from "./webhooks/webhooks.module";
 import { RedisModule } from "./redis/redis.module";
 import { MessagingModule } from "./messaging/messaging.module";
+import { NearModule } from "./near/near.module";
 import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { APP_GUARD } from "@nestjs/core";
 import { BullModule } from "@nestjs/bull";
@@ -58,6 +59,7 @@ import { BullModule } from "@nestjs/bull";
     WebhooksModule,
     RedisModule,
     MessagingModule,
+    NearModule,
   ],
   controllers: [AppController],
   providers: [

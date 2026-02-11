@@ -15,6 +15,7 @@ import * as databaseModule from "../database/database.module";
 import { users } from "../database/schema/users.schema";
 import { CreateDepositDto } from "src/payments/dto/create-deposit.dto";
 import { ImageKitService } from "../common/imagekit.service";
+import { NearService } from "../near/near.service";
 
 @Injectable()
 export class MessagingService {
@@ -29,6 +30,7 @@ export class MessagingService {
     private readonly hashingService: HashingService,
     private readonly configService: ConfigService,
     private readonly imagekitService: ImageKitService,
+    private readonly nearService: NearService,
     @Inject(databaseModule.DRIZZLE) private db: databaseModule.DrizzleDB,
   ) {}
 
@@ -513,6 +515,31 @@ export class MessagingService {
             this.logger.log(`User created: ${user.id}`);
           }
 
+          // Check if user has NEAR account connected
+          if (!user.nearAccountId) {
+            // Generate NEAR wallet connection deep link
+            const deepLink = this.nearService.getConnectDeepLink(phone);
+
+            await this.db
+              .update(users)
+              .set({ regStep: "near_connect" })
+              .where(eq(users.id, user.id));
+
+            await this.sessionService.updateSession(phone, {
+              onboardingStep: "near_connect",
+              tempData: { ...session.tempData, userId: user.id },
+            });
+
+            return (
+              "✅ PIN set successfully!\\n\\n" +
+              "🔗 *Connect Your NEAR Wallet*\\n\\n" +
+              "To enable private, secure remittances on NEAR Protocol, please connect your NEAR testnet wallet:\\n\\n" +
+              `${deepLink}\\n\\n` +
+              "Click the link above to connect via MyNEARWallet. Once connected, we'll continue with identity verification."
+            );
+          }
+
+          // If NEAR account already connected, proceed to KYC
           await this.db
             .update(users)
             .set({ regStep: "kyc" })
@@ -532,6 +559,42 @@ export class MessagingService {
             "*Step 1: Personal Details*\n" +
             "Please reply with your Date of Birth (DD/MM/YYYY) and Country of Residence.\n\n" +
             'Example: "15/03/1990 Nigeria"'
+          );
+        }
+
+        case "near_connect": {
+          // User is waiting for NEAR wallet connection
+          // Check if they've connected (callback would have updated the DB)
+          const updatedUser = await this.usersService.findByPhone(phone);
+
+          if (updatedUser?.nearAccountId) {
+            // Connection successful, move to KYC
+            await this.db
+              .update(users)
+              .set({ regStep: "kyc" })
+              .where(eq(users.id, updatedUser.id));
+
+            await this.sessionService.updateSession(phone, {
+              onboardingStep: "kyc",
+            });
+
+            return (
+              "🎉 *Wallet Connected!*\\n\\n" +
+              `Your NEAR account ${updatedUser.nearAccountId} is now linked.\\n\\n` +
+              "Let's continue with identity verification.\\n\\n" +
+              "*Step 1: Personal Details*\\n" +
+              "Please reply with your Date of Birth (DD/MM/YYYY) and Country of Residence.\\n\\n" +
+              'Example: "15/03/1990 Nigeria"'
+            );
+          }
+
+          // Still waiting for connection
+          const deepLink = this.nearService.getConnectDeepLink(phone);
+          return (
+            "⏳ *Waiting for Wallet Connection*\\n\\n" +
+            "Please click the link below to connect your NEAR testnet wallet:\\n\\n" +
+            `${deepLink}\\n\\n` +
+            "Once you've connected, send any message to continue."
           );
         }
 
