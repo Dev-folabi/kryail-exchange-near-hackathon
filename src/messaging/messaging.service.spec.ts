@@ -8,6 +8,8 @@ import { AfriexService } from "../afriex/afriex.service";
 import { HashingService } from "../auth/hashing.service";
 import { PaymentsService } from "../payments/payments.service";
 import { NotificationsService } from "./notifications.service";
+import { ImageKitService } from "../common/imagekit.service";
+import { NearService } from "../near/near.service";
 import { DRIZZLE } from "../database/database.module";
 
 // Mocks
@@ -24,7 +26,6 @@ const mockSessionService = {
 const mockUsersService = {
   findByPhone: jest.fn(),
   create: jest.fn(),
-  updateAfriexId: jest.fn(),
 };
 
 const mockAfriexService = {
@@ -52,6 +53,17 @@ const mockNotificationsService = {
   sendWelcomeMessage: jest.fn(),
   sendPinRequest: jest.fn(),
   sendTransactionUpdate: jest.fn(),
+};
+
+const mockImagekitService = {
+  uploadImage: jest.fn(),
+  downloadMedia: jest.fn(),
+};
+
+const mockNearService = {
+  getConnectDeepLink: jest.fn(),
+  accountExists: jest.fn(),
+  getAccountBalance: jest.fn(),
 };
 
 const mockDb = {
@@ -100,6 +112,8 @@ describe("MessagingService", () => {
         { provide: HashingService, useValue: mockHashingService },
         { provide: PaymentsService, useValue: mockPaymentsService },
         { provide: NotificationsService, useValue: mockNotificationsService },
+        { provide: ImageKitService, useValue: mockImagekitService },
+        { provide: NearService, useValue: mockNearService },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: DRIZZLE, useValue: mockDb },
       ],
@@ -153,7 +167,6 @@ describe("MessagingService", () => {
       mockUsersService.findByPhone.mockResolvedValue({
         id: 1,
         hasCompletedOnboarding: true,
-        afriexCustomerId: "cust_123",
       });
       mockSessionService.getSession.mockResolvedValue({
         isPinVerified: true, // Assuming PIN not needed for deposit info

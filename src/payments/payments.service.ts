@@ -135,8 +135,22 @@ export class PaymentsService {
       return;
     }
 
+    const [pm] = await this.db
+      .select({ userId: paymentMethods.userId })
+      .from(paymentMethods)
+      .where(
+        eq(paymentMethods.afriexPaymentMethodId, event.data.paymentMethodId),
+      );
+
+    if (!pm) {
+      this.logger.error(
+        `User for payment method ${event.data.paymentMethodId} not found.`,
+      );
+      return;
+    }
+
     const user = await this.db.query.users.findFirst({
-      where: eq(users.afriexCustomerId, customerId),
+      where: eq(users.id, pm.userId),
     });
 
     if (!user) {
@@ -295,14 +309,7 @@ export class PaymentsService {
       if (!user.hasCompletedOnboarding)
         throw new Error("Please complete onboarding first.");
 
-      await this.ensureAfriexCustomer(user);
-
-      const [updatedUser] = await this.db
-        .select()
-        .from(users)
-        .where(eq(users.id, userId));
-      if (!updatedUser.afriexCustomerId)
-        throw new Error("User account not fully set up.");
+      // Removed ensureAfriexCustomer call and customerId checks
 
       const isCrypto = ["USDT", "USDC"].includes(dto.currency);
 
@@ -323,7 +330,6 @@ export class PaymentsService {
         if (isCrypto) {
           accountDetails = await this.afriexService.getCryptoWallet(
             dto.currency as CryptoAsset,
-            user.afriexCustomerId!,
           );
           // Save to DB
           await this.db.insert(paymentMethods).values({
@@ -338,7 +344,6 @@ export class PaymentsService {
         } else {
           accountDetails = await this.afriexService.getVirtualAccount(
             dto.currency,
-            user.afriexCustomerId!,
           );
           // Save to DB
           await this.db.insert(paymentMethods).values({
@@ -388,7 +393,7 @@ export class PaymentsService {
     const afriexTxId = txData.id;
     const amount = parseFloat(txData.amount);
     const currency = txData.currency;
-    const afriexCustomerId = txData.customerId;
+    const paymentMethodId = txData.paymentMethodId;
 
     this.logger.log(`Processing deposit webhook for tx: ${afriexTxId}`);
 
@@ -403,12 +408,26 @@ export class PaymentsService {
       return;
     }
 
+    const [pm] = await this.db
+      .select({ userId: paymentMethods.userId })
+      .from(paymentMethods)
+      .where(eq(paymentMethods.afriexPaymentMethodId, paymentMethodId));
+
+    if (!pm) {
+      this.logger.error(
+        `User for payment method ${paymentMethodId} not found.`,
+      );
+      return;
+    }
+
     const user = await this.db.query.users.findFirst({
-      where: eq(users.afriexCustomerId, afriexCustomerId),
+      where: eq(users.id, pm.userId),
     });
 
-    if (!user) {
-      this.logger.error(`User with Afriex ID ${afriexCustomerId} not found.`);
+    if(!user){
+      this.logger.error(
+        `User for payment method ${paymentMethodId} not found.`,
+      );
       return;
     }
 
@@ -461,7 +480,6 @@ export class PaymentsService {
       } else {
         await tx.insert(transactions).values({
           userId: user.id,
-          afriexTxId: afriexTxId,
           type: "deposit",
           amount: creditAmount.toString(),
           currency: assetToCredit,
@@ -515,16 +533,7 @@ export class PaymentsService {
         .where(eq(users.id, userId));
       if (!user) throw new Error("User not found");
 
-      // Ensure Afriex customer exists
-      await this.ensureAfriexCustomer(user);
-
-      const [updatedUser] = await this.db
-        .select()
-        .from(users)
-        .where(eq(users.id, userId));
-
-      if (!updatedUser.afriexCustomerId)
-        throw new Error("User account not fully set up.");
+      // Removed ensureAfriexCustomer call and customerId checks
 
       const [wallet] = await this.db
         .select()
@@ -568,7 +577,7 @@ export class PaymentsService {
 
       // 3. Create Transaction on Afriex
       const afriexTx = await this.afriexService.createTransaction({
-        customerId: user.afriexCustomerId!,
+        customerId: "", // No longer tracking customerId locally
         destinationAmount: amountToReceive,
         currency: dto.currency,
         destinationId: dto.destinationPaymentMethodId,
@@ -599,49 +608,6 @@ export class PaymentsService {
     } catch (error) {
       this.logger.error("Error starting withdrawal:", error);
       throw error;
-    }
-  }
-
-  private async ensureAfriexCustomer(user: any): Promise<void> {
-    if (user.hasCreatedAfriex && user.afriexCustomerId) {
-      return;
-    }
-
-    const fullName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
-    if (!fullName) {
-      this.logger.error(`User ${user.id} has no name. Auto-creation aborted.`);
-      return;
-    }
-
-    this.logger.log(
-      `Ensuring Afriex customer for user ${user.id} (${fullName})`,
-    );
-
-    try {
-      const customer = await this.afriexService.createCustomer({
-        fullName: fullName,
-        email: user.email,
-        phone: user.phone,
-        countryCode: user.countryCode || "NG",
-        meta: { source: "kryail_auto_create" },
-      });
-
-      if (customer && customer.customerId) {
-        await this.db
-          .update(users)
-          .set({
-            afriexCustomerId: customer.customerId,
-            hasCreatedAfriex: true,
-          })
-          .where(eq(users.id, user.id));
-        this.logger.log(`Auto-created Afriex customer for user ${user.id}`);
-      }
-    } catch (error) {
-      this.logger.error(
-        `Failed to auto-create Afriex customer for user ${user.id}`,
-        error,
-      );
-      // We don't throw here, the calling method will check afriexCustomerId
     }
   }
 }

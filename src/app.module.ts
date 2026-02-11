@@ -21,7 +21,7 @@ import { BullModule } from "@nestjs/bull";
     ConfigModule.forRoot({
       isGlobal: true,
       load: [configuration],
-      envFilePath: `.env.${process.env.NODE_ENV || "dev"}`,
+      envFilePath: `.env.${process.env.NODE_ENV === "development" ? "dev" : process.env.NODE_ENV || "dev"}`,
     }),
     BullModule.forRootAsync({
       imports: [ConfigModule],

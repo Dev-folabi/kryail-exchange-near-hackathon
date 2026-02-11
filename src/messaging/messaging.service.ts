@@ -719,19 +719,6 @@ export class MessagingService {
               },
             });
 
-            if (afriexCustomer && afriexCustomer.customerId) {
-              await this.usersService.updateAfriexId(
-                user.id,
-                afriexCustomer.customerId,
-              );
-              await this.db
-                .update(users)
-                .set({ hasCreatedAfriex: true })
-                .where(eq(users.id, user.id));
-            } else {
-              throw new Error("Failed to get Afriex Customer ID");
-            }
-
             await this.db
               .update(users)
               .set({

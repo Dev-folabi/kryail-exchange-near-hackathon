@@ -6,6 +6,8 @@ import { RedisService } from "../redis/redis.service";
 import { ClientKafka } from "@nestjs/microservices";
 import * as databaseModule from "../database/database.module";
 import { getQueueToken } from "@nestjs/bull";
+import { NotificationsService } from "../messaging/notifications.service";
+import { QueuesService } from "../queues/queues.service";
 
 // Mock dependencies
 const mockAfriexService = {
@@ -18,6 +20,14 @@ const mockRedisService = {};
 
 const mockQueue = {
   add: jest.fn(),
+};
+
+const mockNotificationsService = {
+  sendTransactionUpdate: jest.fn(),
+};
+
+const mockQueuesService = {
+  // Add methods as needed
 };
 
 const mockQueryBuilder = {
@@ -65,7 +75,8 @@ describe("PaymentsService", () => {
         { provide: AfriexService, useValue: mockAfriexService },
         { provide: RedisService, useValue: mockRedisService },
         { provide: databaseModule.DRIZZLE, useValue: mockDb },
-        { provide: "KAFKA_SERVICE", useValue: mockKafkaClient },
+        { provide: NotificationsService, useValue: mockNotificationsService },
+        { provide: QueuesService, useValue: mockQueuesService },
         { provide: getQueueToken("notifications"), useValue: mockQueue },
       ],
     }).compile();
@@ -88,7 +99,6 @@ describe("PaymentsService", () => {
       const mockUser = {
         id: 1,
         hasCompletedOnboarding: true,
-        afriexCustomerId: "cust_123",
       };
       const mockAccount = {
         institutionName: "Test Bank",
@@ -106,10 +116,7 @@ describe("PaymentsService", () => {
 
       expect(result).toContain("Test Bank");
       expect(result).toContain("1234567890");
-      expect(mockAfriexService.getVirtualAccount).toHaveBeenCalledWith(
-        "NGN",
-        "cust_123",
-      );
+      expect(mockAfriexService.getVirtualAccount).toHaveBeenCalledWith("NGN");
     });
 
     it("should throw error if user not onboarded", async () => {
@@ -157,20 +164,24 @@ describe("PaymentsService", () => {
   describe("processDepositWebhook", () => {
     it("should process valid deposit webhook", async () => {
       const event = {
-        event: "transaction.updated",
+        event: "TRANSACTION.UPDATED",
         data: {
           id: "tx_123",
           status: "completed",
           amount: "5000",
           currency: "NGN",
-          customerId: "cust_123",
+          paymentMethodId: "pm_123",
         },
       };
 
       mockDb.query.transactions.findFirst.mockResolvedValue(null);
+      mockDb.select.mockReturnValue({
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockResolvedValue([{ userId: 1 }]),
+      });
+
       mockDb.query.users.findFirst.mockResolvedValue({
         id: 1,
-        afriexCustomerId: "cust_123",
         phone: "123",
       });
       mockDb.query.wallets.findFirst.mockResolvedValue({
@@ -184,18 +195,13 @@ describe("PaymentsService", () => {
         rates: { USDT: { NGN: 1000 } },
       });
 
-      await service.processDepositWebhook(event as any);
+      await service.processDepositUpdate(event as any);
 
       expect(mockDb.insert).toHaveBeenCalled();
       expect(mockDb.update).toHaveBeenCalled();
-      expect(mockKafkaClient.emit).toHaveBeenCalledWith(
-        "deposit.confirmed",
-        expect.objectContaining({
-          userId: 1,
-          phone: "123",
-          amount: 5,
-        }),
-      );
+      expect(
+        mockNotificationsService.sendTransactionUpdate,
+      ).toHaveBeenCalledWith(1, "deposit", "completed", 5, "USDT");
     });
   });
 
@@ -228,7 +234,9 @@ describe("PaymentsService", () => {
       expect(result).toContain("Successfully sent");
       expect(mockDb.update).toHaveBeenCalledTimes(2); // Sender & Recipient wallet updates
       expect(mockDb.insert).toHaveBeenCalledTimes(2); // Two transaction records
-      expect(mockQueue.add).toHaveBeenCalled(); // Notifications
+      expect(
+        mockNotificationsService.sendTransactionUpdate,
+      ).toHaveBeenCalledTimes(2);
     });
   });
 });

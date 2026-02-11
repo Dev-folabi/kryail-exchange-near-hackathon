@@ -50,7 +50,7 @@
     "helmet": "^8.1.0",
     "imagekit": "^6.0.0",
     "ioredis": "^5.9.2",
-    "near-api-js": "^7.1.0",
+    "near-api-js": "^4.0.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",

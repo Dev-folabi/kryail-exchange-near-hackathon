@@ -24,13 +24,6 @@ export class WebhookProcessor {
 
     try {
       switch (event) {
-        case "CUSTOMER.CREATED":
-          await this.handleCustomerCreated(data);
-          break;
-
-        case "CUSTOMER.UPDATED":
-          await this.handleCustomerUpdated(data);
-          break;
 
         case "TRANSACTION.CREATED":
           await this.handleTransactionCreated(data);
@@ -62,33 +55,6 @@ export class WebhookProcessor {
       });
 
       throw error;
-    }
-  }
-
-  /**
-   * Handle customer.created event
-   */
-  private async handleCustomerCreated(data: any): Promise<void> {
-    this.logger.debug("Handling customer.created event", data);
-    if (data.phone) {
-      const user = await this.usersService.findByPhone(data.phone);
-      if (user) {
-        await this.usersService.updateAfriexId(user.id, data.id);
-        this.logger.log(`Updated user ${user.id} with Afriex ID ${data.id}`);
-      }
-    }
-  }
-
-  /**
-   * Handle customer.updated event
-   */
-  private async handleCustomerUpdated(data: any): Promise<void> {
-    this.logger.debug("Handling customer.updated event", data);
-    if (data.phone) {
-      const user = await this.usersService.findByPhone(data.phone);
-      if (user) {
-        await this.usersService.updateAfriexId(user.id, data.id);
-      }
     }
   }
 
