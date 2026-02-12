@@ -131,7 +131,7 @@ export class MessagingService {
       case "send":
         return this.handleSend(intent, user, session);
       case "receive_inbound":
-        return this.handleReceiveInbound(intent, user);
+        return this.handleReceiveInbound(intent, user, session);
       case "set_pin":
         return this.handleSetPin(user, session, phone);
       case "help":
@@ -260,11 +260,12 @@ export class MessagingService {
   }
 
   /**
-   * Handle receive inbound remittance intent - NEAR-based
+   * Handle receive inbound remittance intent - NEAR-based with Shade Agent
    */
   private async handleReceiveInbound(
     intent: ParsedIntent,
     user: any,
+    session: SessionData,
   ): Promise<string> {
     try {
       // Validate user has completed onboarding
@@ -285,7 +286,37 @@ export class MessagingService {
         );
       }
 
-      // Create NEAR intent
+      // 1. Get Cross-Border Quote
+      const { rate, estimatedAmount } =
+        await this.nearService.getCrossBorderQuote(
+          intent.amount,
+          intent.sourceCurrency,
+          intent.targetCurrency || "NGN", // Default to NGN
+        );
+
+      // 2. Require PIN verification if not verified
+      if (!session.isPinVerified) {
+        await this.sessionService.updateSession(user.phone, {
+          pendingAction: "receive_inbound",
+          pendingData: intent,
+          isPinVerified: false,
+        });
+
+        const formattedAmount = new Intl.NumberFormat("en-NG", {
+          style: "currency",
+          currency: "NGN",
+        }).format(estimatedAmount);
+
+        return (
+          `💱 *Exchange Rate Quote*\\n\\n` +
+          `Rate: 1 ${intent.sourceCurrency} ≈ ${rate} NGN\\n` +
+          `You receive: ~${formattedAmount}\\n\\n` +
+          `🔐 *Security Verification*\\n` +
+          `Please enter your 4-digit PIN to confirm and start the inbound process.`
+        );
+      }
+
+      // 3. Create NEAR intent (post-PIN)
       const intentData = await this.nearService.createRemittanceIntent(
         user.id,
         intent,
@@ -302,6 +333,13 @@ export class MessagingService {
         agentId: agentInfo.agentId,
         intent: intentData,
         userId: user.id,
+      });
+
+      // Clear PIN verification
+      await this.sessionService.updateSession(user.phone, {
+        isPinVerified: false,
+        pendingAction: undefined,
+        pendingData: undefined,
       });
 
       // Return privacy-focused confirmation message
@@ -929,6 +967,11 @@ export class MessagingService {
           ...session,
           isPinVerified: true,
         });
+      } else if (pendingAction === "receive_inbound") {
+        return this.handleReceiveInbound(pendingData, user, {
+          ...session,
+          isPinVerified: true,
+        });
       }
 
       return "Action completed successfully.";
@@ -1043,20 +1086,15 @@ export class MessagingService {
    */
   private handleHelp(): string {
     return (
-      "❓ *Kryail Help*\n\n" +
-      "Here's what I can help you with:\n\n" +
-      "💰 *deposit* - Get account details to fund your wallet\n" +
-      "💸 *withdraw [amount] [currency]* - Withdraw to your bank\n" +
-      "💼 *balance* - Check your wallet balances\n" +
-      "💱 *rate [currency]* - Check exchange rates\n" +
-      "📤 *send [amount] [currency] to [phone]* - Transfer to another user\n" +
-      "🔐 *set pin* - Change your PIN\n\n" +
-      "Examples:\n" +
-      '• "deposit NGN"\n' +
-      '• "rate USDT"\n' +
-      '• "withdraw 5000 NGN"\n' +
-      '• "send 1000 NGN to +2348012345678"\n' +
-      '• "balance"'
+      "🤖 *Kryail - Private Remittance Agent*\\n\\n" +
+      "I am powered by *Shade Protocol* on NEAR to keep your transactions private and secure.\\n\\n" +
+      "*Available Commands:*\\n" +
+      '• *Receive:* "receive 100 USD" or "get 50 EUR in NGN"\\n' +
+      '• *Send:* "send 50 USDT to 0x..." or "send 5000 NGN to +234..."\\n' +
+      '• *Balance:* "check balance"\\n' +
+      '• *Rate:* "check rates"\\n' +
+      '• *PIN:* "change pin"\\n\\n' +
+      "🔒 *Privacy Guarantee:* Your keys and data are processed in a Trusted Execution Environment (TEE). No central server sees your secrets."
     );
   }
 

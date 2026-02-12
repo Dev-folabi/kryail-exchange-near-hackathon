@@ -48,7 +48,7 @@ export interface SessionData {
   lastIntent?: string;
   tempData?: Record<string, any>;
   isPinVerified?: boolean;
-  pendingAction?: "withdraw" | "send" | "pin_change";
+  pendingAction?: "withdraw" | "send" | "pin_change" | "receive_inbound";
   pendingData?: any;
   pinChangeStep?: "current" | "new" | "confirm";
 }

@@ -110,7 +110,7 @@ export class LlmService {
     }
 
     return `You are a private remittance agent on NEAR Protocol. Parse user message into JSON only. Supported intents:
-- "receive_inbound": Receiving foreign fiat to NGN (e.g. "receive 100 USD to NGN")
+- "receive_inbound": Receiving foreign fiat to NGN (e.g. "receive 100 USD", "get 200 EUR in NGN", "incoming 150 CAD to my wallet")
 - "send": Sending USDT/USDC/NGN (e.g. "send 50 USDT to 0x..." or "to +234...")
 - "deposit": Deposit funds to wallet
 - "withdraw": Withdraw funds from wallet

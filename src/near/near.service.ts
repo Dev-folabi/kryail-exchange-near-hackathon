@@ -451,4 +451,34 @@ export class NearService {
       };
     }
   }
+
+  /**
+   * Get cross-border remittance quote
+   * @param amount Amount in source currency
+   * @param source Source currency code
+   * @param target Target currency code
+   * @returns Quote object with rate and estimated receive amount
+   */
+  async getCrossBorderQuote(
+    amount: number,
+    source: string,
+    target: string = "NGN",
+  ): Promise<{ rate: number; estimatedAmount: number }> {
+    // Mock rates for demo
+    // In production, fetch from Oracle or Exchange API
+    const rates: Record<string, number> = {
+      USD: 1600,
+      GBP: 2050,
+      EUR: 1750,
+      CAD: 1150,
+    };
+
+    const rate = rates[source] || 1500; // Default fallback
+    const estimatedAmount = amount * rate;
+
+    return {
+      rate,
+      estimatedAmount,
+    };
+  }
 }

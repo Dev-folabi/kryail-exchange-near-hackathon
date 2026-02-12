@@ -13,6 +13,7 @@ describe("AgentProcessor", () => {
 
   const mockNearService = {
     executeIntentWithAgent: jest.fn(),
+    getCrossBorderQuote: jest.fn(),
   };
 
   const mockQueuesService = {
@@ -26,6 +27,8 @@ describe("AgentProcessor", () => {
     select: jest.fn().mockReturnThis(),
     from: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
+    insert: jest.fn().mockReturnThis(),
+    values: jest.fn().mockReturnThis(),
   };
 
   beforeEach(async () => {
@@ -48,15 +51,15 @@ describe("AgentProcessor", () => {
     jest.clearAllMocks();
   });
 
-  it("should handle successful agent execution", async () => {
+  it("should handle inbound remittance execution with quote", async () => {
     const job = {
       data: {
         agentId: "agent-123",
         intent: {
+          type: "inbound_remittance",
           amount: 100,
-          target: "NGN",
           source: "USD",
-          recipient: "recipient.testnet",
+          target: "NGN",
         },
         userId: 1,
       },
@@ -68,6 +71,10 @@ describe("AgentProcessor", () => {
     };
 
     mockNearService.executeIntentWithAgent.mockResolvedValue(executionResult);
+    mockNearService.getCrossBorderQuote.mockResolvedValue({
+      rate: 1600,
+      estimatedAmount: 160000,
+    });
     mockDb.limit.mockResolvedValue([{ phone: "+1234567890" }]);
 
     await processor.handleAgentExecution(job);
@@ -76,10 +83,15 @@ describe("AgentProcessor", () => {
       "agent-123",
       job.data.intent,
     );
+    expect(nearService.getCrossBorderQuote).toHaveBeenCalledWith(
+      100,
+      "USD",
+      "NGN",
+    );
     expect(queuesService.addNotificationToQueue).toHaveBeenCalledWith(
       expect.objectContaining({
+        message: expect.stringContaining("✅ *Inbound Remittance Complete!*"),
         phone: "+1234567890",
-        message: expect.stringContaining("✅ *Remittance Complete!*"),
       }),
     );
   });

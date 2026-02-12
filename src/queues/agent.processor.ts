@@ -36,8 +36,23 @@ export class AgentProcessor {
         throw new Error(result.error || "Agent execution failed");
       }
 
-      // Update wallet balance
-      await this.updateWalletBalance(userId, intent.amount, intent.target);
+      // Handle balance updates based on intent type
+      let finalAmount = intent.amount;
+      if (intent.type === "inbound_remittance") {
+        // Calculate final amount using current rate
+        const quote = await this.nearService.getCrossBorderQuote(
+          intent.amount,
+          intent.source,
+          intent.target,
+        );
+        finalAmount = quote.estimatedAmount;
+
+        // Credit target currency (e.g. NGN)
+        await this.updateWalletBalance(userId, finalAmount, "NGN");
+      } else if (intent.type === "transfer") {
+        // Debit source currency
+        await this.updateWalletBalance(userId, -intent.amount, intent.source);
+      }
 
       // Get user phone for notification
       const userPhone = await this.getUserPhone(userId);
@@ -45,7 +60,7 @@ export class AgentProcessor {
       // Queue notification via BullMQ
       await this.queuesService.addNotificationToQueue({
         phone: userPhone,
-        message: this.formatCompletionMessage(intent, result),
+        message: this.formatCompletionMessage(intent, result, finalAmount),
       });
 
       this.logger.log(
@@ -81,15 +96,34 @@ export class AgentProcessor {
     currency: string,
   ): Promise<void> {
     try {
-      await this.db
-        .update(wallets)
-        .set({
-          balance: sql`balance + ${amount}`,
-          updatedAt: new Date(),
-        })
+      // Check if wallet exists, if not create it
+      const wallet = await this.db
+        .select()
+        .from(wallets)
         .where(
           and(eq(wallets.userId, userId), eq(wallets.asset, currency as any)),
-        );
+        )
+        .limit(1);
+
+      if (!wallet || wallet.length === 0) {
+        if (amount > 0) {
+          await this.db.insert(wallets).values({
+            userId,
+            asset: currency as any,
+            balance: amount.toString(),
+          });
+        }
+      } else {
+        await this.db
+          .update(wallets)
+          .set({
+            balance: sql`balance + ${amount}`,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(eq(wallets.userId, userId), eq(wallets.asset, currency as any)),
+          );
+      }
 
       this.logger.log(
         `Updated wallet balance for user ${userId}: +${amount} ${currency}`,
@@ -115,13 +149,32 @@ export class AgentProcessor {
     }
   }
 
-  private formatCompletionMessage(intent: any, result: any): string {
+  private formatCompletionMessage(
+    intent: any,
+    result: any,
+    finalAmount?: number,
+  ): string {
+    if (intent.type === "inbound_remittance") {
+      const formattedAmount = new Intl.NumberFormat("en-NG", {
+        style: "currency",
+        currency: "NGN",
+      }).format(finalAmount || 0);
+
+      return (
+        `✅ *Inbound Remittance Complete!*\\n\\n` +
+        `Received: ${intent.amount} ${intent.source}\\n` +
+        `Credited: ${formattedAmount}\\n` +
+        `Transaction: ${result.txHash}\\n\\n` +
+        `✨ Executed privately by your Shade Agent`
+      );
+    }
+
     return (
-      `✅ *Remittance Complete!*\\n\\n` +
-      `${intent.amount} ${intent.source} → ${intent.target}\\n` +
+      `✅ *Transfer Complete!*\\n\\n` +
+      `Sent: ${intent.amount} ${intent.source}\\n` +
+      `Recipient: ${intent.recipient}\\n` +
       `Transaction: ${result.txHash}\\n\\n` +
-      `✨ Executed privately by your Shade Agent\\n` +
-      `🔒 Your keys stayed secure`
+      `✨ Executed privately by your Shade Agent`
     );
   }
 }
