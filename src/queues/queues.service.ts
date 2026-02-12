@@ -10,6 +10,7 @@ export class QueuesService {
   constructor(
     @InjectQueue("webhook-process") private webhookQueue: Queue,
     @InjectQueue("notifications") private notificationsQueue: Queue,
+    @InjectQueue("agent-execution") private agentExecutionQueue: Queue,
   ) {}
 
   /**
@@ -50,6 +51,28 @@ export class QueuesService {
       });
     } catch (error) {
       this.logger.error("Failed to add notification to queue:", error);
+    }
+  }
+
+  /**
+   * Add agent execution job to queue
+   */
+  async addAgentExecutionJob(data: any): Promise<void> {
+    try {
+      await this.agentExecutionQueue.add("execute-intent", data, {
+        attempts: 5,
+        backoff: {
+          type: "exponential",
+          delay: 1000,
+        },
+        removeOnComplete: true,
+        removeOnFail: false,
+      });
+
+      this.logger.log(`Added agent execution job for user: ${data.userId}`);
+    } catch (error) {
+      this.logger.error("Failed to add agent execution job:", error);
+      throw error;
     }
   }
 }

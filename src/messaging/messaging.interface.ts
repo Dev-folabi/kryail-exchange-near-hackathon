@@ -1,10 +1,10 @@
 export interface ParsedIntent {
-  sourceCurrency?: string;
   intent:
     | "deposit"
     | "withdraw"
     | "balance"
     | "send"
+    | "receive_inbound"
     | "help"
     | "onboard"
     | "set_pin"
@@ -12,7 +12,9 @@ export interface ParsedIntent {
     | "unknown";
   amount?: number;
   currency?: string;
-  target?: string;
+  sourceCurrency?: "USD" | "GBP" | "EUR" | "CAD" | "NGN" | null;
+  targetCurrency?: "NGN" | "USDT" | "USDC" | null;
+  target?: string; // Phone number or 0x... address
   step?: "name" | "pin" | "confirm_pin" | "kyc" | null;
   extractedDetails?: {
     firstName?: string;

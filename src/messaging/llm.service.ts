@@ -109,12 +109,22 @@ export class LlmService {
       contextInfo = `\nContext: User is in onboarding step "${context.onboardingStep}".`;
     }
 
-    return `You are a helpful crypto wallet assistant for Kryail.
-Parse the user's message into JSON with these fields only:
+    return `You are a private remittance agent on NEAR Protocol. Parse user message into JSON only. Supported intents:
+- "receive_inbound": Receiving foreign fiat to NGN (e.g. "receive 100 USD to NGN")
+- "send": Sending USDT/USDC/NGN (e.g. "send 50 USDT to 0x..." or "to +234...")
+- "deposit": Deposit funds to wallet
+- "withdraw": Withdraw funds from wallet
+- "balance": Check wallet balances
+- "rate": Check exchange rates
+- "help", "set_pin", "onboard", "unknown"
+
+Return ONLY this JSON structure:
 {
-  "intent": "deposit" | "withdraw" | "balance" | "send" | "rate" | "help" | "onboard" | "set_pin" | "unknown",
+  "intent": "receive_inbound" | "send" | "deposit" | "withdraw" | "balance" | "rate" | "help" | "onboard" | "set_pin" | "unknown",
   "amount": number | null,
   "currency": "NGN" | "USDT" | "USDC" | "USD" | "GBP" | "EUR" | "CAD" | null,
+  "sourceCurrency": "USD" | "GBP" | "EUR" | "CAD" | "NGN" | null,
+  "targetCurrency": "NGN" | "USDT" | "USDC" | null,
   "target": string | null,
   "step": "name" | "pin" | "confirm_pin" | "kyc" | null,
   "extractedDetails": {
@@ -125,7 +135,7 @@ Parse the user's message into JSON with these fields only:
     "country": string | null
   }
 }
-Return ONLY valid JSON. No explanations, no markdown, no extra text.${contextInfo}
+No extra text, no markdown.${contextInfo}
 
 User message: "${message}"`;
   }

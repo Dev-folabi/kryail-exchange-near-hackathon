@@ -7,6 +7,19 @@ import { ParsedIntent } from "../messaging.interface";
 export function fallbackParse(message: string): ParsedIntent {
   const msg = message.trim().toLowerCase();
 
+  // Receive inbound pattern: "receive 100 USD to NGN" or "receive 100 USD"
+  const receiveMatch = msg.match(
+    /receive\s+(\d+(?:\.\d+)?)\s*(USD|GBP|EUR|CAD)\s*(to\s*(NGN|USDT|USDC))?/i,
+  );
+  if (receiveMatch) {
+    return {
+      intent: "receive_inbound",
+      amount: parseFloat(receiveMatch[1]),
+      sourceCurrency: receiveMatch[2]?.toUpperCase() as any,
+      targetCurrency: (receiveMatch[4]?.toUpperCase() || "NGN") as any,
+    };
+  }
+
   // Deposit pattern: "deposit 5000 NGN" or "deposit 5000"
   const depositMatch = msg.match(/deposit\s+(\d+(?:\.\d+)?)\s*(\w+)?/i);
   if (depositMatch) {
@@ -27,13 +40,17 @@ export function fallbackParse(message: string): ParsedIntent {
     };
   }
 
-  // Send pattern: "send 1000 NGN to +234..." or "send 1000 to +234..."
-  const sendMatch = msg.match(/send\s+(\d+(?:\.\d+)?)\s*(\w+)?\s+to\s+(.+)/i);
+  // Send pattern: "send 1000 NGN to +234..." or "send 50 USDT to 0x..." or "send 1000 to +234..."
+  const sendMatch = msg.match(
+    /send\s+(\d+(?:\.\d+)?)\s*(USDT|USDC|NGN)?\s+to\s+(.+)/i,
+  );
   if (sendMatch) {
+    const currency = sendMatch[2]?.toUpperCase() || "NGN";
     return {
       intent: "send",
       amount: parseFloat(sendMatch[1]),
-      currency: sendMatch[2]?.toUpperCase() || "NGN",
+      currency: currency,
+      targetCurrency: currency as any,
       target: sendMatch[3].trim(),
     };
   }

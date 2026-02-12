@@ -16,6 +16,7 @@ import { users } from "../database/schema/users.schema";
 import { CreateDepositDto } from "src/payments/dto/create-deposit.dto";
 import { ImageKitService } from "../common/imagekit.service";
 import { NearService } from "../near/near.service";
+import { QueuesService } from "../queues/queues.service";
 
 @Injectable()
 export class MessagingService {
@@ -31,6 +32,7 @@ export class MessagingService {
     private readonly configService: ConfigService,
     private readonly imagekitService: ImageKitService,
     private readonly nearService: NearService,
+    private readonly queuesService: QueuesService,
     @Inject(databaseModule.DRIZZLE) private db: databaseModule.DrizzleDB,
   ) {}
 
@@ -128,6 +130,8 @@ export class MessagingService {
         return this.handleBalance(user);
       case "send":
         return this.handleSend(intent, user, session);
+      case "receive_inbound":
+        return this.handleReceiveInbound(intent, user);
       case "set_pin":
         return this.handleSetPin(user, session, phone);
       case "help":
@@ -256,6 +260,66 @@ export class MessagingService {
   }
 
   /**
+   * Handle receive inbound remittance intent - NEAR-based
+   */
+  private async handleReceiveInbound(
+    intent: ParsedIntent,
+    user: any,
+  ): Promise<string> {
+    try {
+      // Validate user has completed onboarding
+      if (!user.hasCompletedOnboarding) {
+        return "Please complete onboarding first. Type 'onboard' to get started.";
+      }
+
+      // Validate user has NEAR wallet connected
+      if (!user.nearAccountId) {
+        return "Please connect your NEAR wallet first. Type 'onboard' to continue setup.";
+      }
+
+      // Validate amount and source currency
+      if (!intent.amount || !intent.sourceCurrency) {
+        return (
+          "Please specify amount and currency.\\n\\n" +
+          'Example: "receive 100 USD to NGN"'
+        );
+      }
+
+      // Create NEAR intent
+      const intentData = await this.nearService.createRemittanceIntent(
+        user.id,
+        intent,
+        this.db,
+      );
+
+      // Spawn Shade Agent for user
+      const agentInfo = await this.nearService.spawnShadeAgent(
+        user.nearAccountId,
+      );
+
+      // Queue agent execution via BullMQ
+      await this.queuesService.addAgentExecutionJob({
+        agentId: agentInfo.agentId,
+        intent: intentData,
+        userId: user.id,
+      });
+
+      // Return privacy-focused confirmation message
+      return (
+        `🤖 *Your Private Shade Agent is Working*\\n\\n` +
+        `Amount: ${intent.amount} ${intent.sourceCurrency} → ${intent.targetCurrency || "NGN"}\\n` +
+        `Agent ID: ${agentInfo.agentId.substring(0, 20)}...\\n\\n` +
+        `✨ Your agent executes this privately in TEE\\n` +
+        `🔒 No central server sees your keys or balances\\n\\n` +
+        `You'll be notified when complete.`
+      );
+    } catch (error) {
+      this.logger.error("Receive inbound handler error:", error);
+      return formatErrorMessage(error as Error);
+    }
+  }
+
+  /**
    * Handle balance inquiry
    */
   private async handleBalance(user: any): Promise<string> {
@@ -268,7 +332,7 @@ export class MessagingService {
   }
 
   /**
-   * Handle send intent - transfer to another user
+   * Handle send intent - transfer to another user via NEAR
    */
   private async handleSend(
     intent: ParsedIntent,
@@ -276,10 +340,20 @@ export class MessagingService {
     session: SessionData,
   ): Promise<string> {
     try {
+      // Validate user has completed onboarding
+      if (!user.hasCompletedOnboarding) {
+        return "Please complete onboarding first. Type 'onboard' to get started.";
+      }
+
+      // Validate user has NEAR wallet connected
+      if (!user.nearAccountId) {
+        return "Please connect your NEAR wallet first. Type 'onboard' to continue setup.";
+      }
+
       if (!intent.amount || !intent.target) {
         return (
-          "To send funds, please specify the amount, currency, and recipient phone number.\n\n" +
-          'Example: "send 1000 NGN to +2348012345678"'
+          "To send funds, please specify the amount, currency, and recipient.\\n\\n" +
+          'Example: "send 1000 NGN to +2348012345678" or "send 50 USDT to 0x..."'
         );
       }
 
@@ -290,23 +364,46 @@ export class MessagingService {
           pendingData: intent,
           isPinVerified: false,
         });
-        return "🔐 *Security Verification*\n\nPlease enter your 4-digit PIN to confirm this transfer.";
+        return "🔐 *Security Verification*\\n\\nPlease enter your 4-digit PIN to confirm this transfer.";
       }
 
-      const result = await this.paymentsService.startSend(user.id, {
-        amount: intent.amount,
-        currency: intent.currency || "NGN",
-        target: intent.target,
+      // Create NEAR intent
+      const intentData = await this.nearService.createRemittanceIntent(
+        user.id,
+        intent,
+        this.db,
+      );
+
+      // Spawn Shade Agent for user
+      const agentInfo = await this.nearService.spawnShadeAgent(
+        user.nearAccountId,
+      );
+
+      // Queue agent execution via BullMQ
+      await this.queuesService.addAgentExecutionJob({
+        agentId: agentInfo.agentId,
+        intent: intentData,
+        userId: user.id,
       });
 
-      // Clear PIN verification after successful send
+      // Clear PIN verification after successful intent creation
       await this.sessionService.updateSession(user.phone, {
         isPinVerified: false,
         pendingAction: undefined,
         pendingData: undefined,
       });
 
-      return result;
+      // Return privacy-focused confirmation message
+      const currency = intent.targetCurrency || intent.currency || "NGN";
+      return (
+        `🤖 *Your Private Shade Agent is Working*\\n\\n` +
+        `Amount: ${intent.amount} ${currency}\\n` +
+        `Recipient: ${intentData.recipient}\\n` +
+        `Agent ID: ${agentInfo.agentId.substring(0, 20)}...\\n\\n` +
+        `✨ Your agent executes this privately in TEE\\n` +
+        `🔒 No central server sees your keys or balances\\n\\n` +
+        `You'll be notified when complete.`
+      );
     } catch (error) {
       this.logger.error("Send handler error:", error);
       // Clear session on error

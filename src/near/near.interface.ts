@@ -24,3 +24,34 @@ export interface AccountBalance {
   stateStaked: string;
   staked: string;
 }
+
+export type IntentType = "inbound_remittance" | "transfer";
+
+export interface RecipientInfo {
+  address: string; // NEAR account ID or 0x address
+  type: "near_account" | "external_address";
+}
+
+export interface RemittanceIntent {
+  type: IntentType;
+  amount: number;
+  source: "USD" | "GBP" | "EUR" | "CAD" | "NGN";
+  target: "NGN" | "USDT" | "USDC";
+  recipient: string; // NEAR account ID or 0x address
+  timestamp: number;
+  userId: number;
+}
+
+export interface AgentInfo {
+  agentId: string;
+  userNearId: string;
+  createdAt: number;
+}
+
+export interface AgentExecutionResult {
+  status: "completed" | "failed" | "pending";
+  txHash?: string;
+  error?: string;
+  recipient?: string;
+  amount?: number;
+}

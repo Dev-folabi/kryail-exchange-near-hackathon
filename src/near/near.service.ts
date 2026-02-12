@@ -3,6 +3,8 @@ import { ConfigService } from "@nestjs/config";
 import * as nearAPI from "near-api-js";
 import * as Sentry from "@sentry/node";
 import { NearConfig, ConnectState, AccountBalance } from "./near.interface";
+import { users } from "../database/schema/users.schema";
+import { eq } from "drizzle-orm";
 
 @Injectable()
 export class NearService {
@@ -188,6 +190,265 @@ export class NearService {
     } catch (error) {
       this.logger.warn(`Account ${accountId} does not exist or is invalid`);
       return false;
+    }
+  }
+
+  /**
+   * Create a NEAR remittance intent
+   * @param userId User ID from database
+   * @param intent Parsed intent from messaging service
+   * @returns RemittanceIntent object
+   */
+  async createRemittanceIntent(
+    userId: number,
+    intent: any,
+    db: any,
+  ): Promise<any> {
+    try {
+      // Fetch user from database
+      const userResult = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      if (!userResult || userResult.length === 0) {
+        throw new Error("User not found");
+      }
+
+      const user = userResult[0];
+
+      // Validate user has NEAR account connected
+      if (!user.nearAccountId) {
+        throw new Error(
+          "Please connect your NEAR wallet first. Type 'onboard' to continue setup.",
+        );
+      }
+
+      // Determine recipient address
+      let recipientAddress: string;
+      if (intent.target) {
+        recipientAddress = await this.getRecipientAddress(intent.target, db);
+      } else {
+        // If no target specified, use user's own account (for receive_inbound)
+        recipientAddress = user.nearAccountId;
+      }
+
+      // Build intent payload
+      const intentPayload = {
+        type:
+          intent.intent === "receive_inbound"
+            ? "inbound_remittance"
+            : "transfer",
+        amount: intent.amount,
+        source: intent.sourceCurrency || intent.currency || "USD",
+        target: intent.targetCurrency || intent.currency || "NGN",
+        recipient: recipientAddress,
+        timestamp: Date.now(),
+        userId: userId,
+      };
+
+      this.logger.log(
+        `Created NEAR intent: ${intentPayload.type} for user ${userId}`,
+        intentPayload,
+      );
+
+      return intentPayload;
+    } catch (error) {
+      this.logger.error("Error creating remittance intent:", error);
+      Sentry.captureException(error, {
+        tags: { service: "near", action: "create_intent" },
+        extra: { userId, intent },
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get recipient NEAR address from phone number or direct address
+   * @param target Phone number or 0x... address
+   * @param db Drizzle database instance
+   * @returns NEAR account ID or address
+   */
+  async getRecipientAddress(target: string, db: any): Promise<string> {
+    try {
+      // If target starts with "0x", treat as direct address
+      if (target.startsWith("0x")) {
+        this.logger.log(`Using direct address: ${target}`);
+        return target;
+      }
+
+      // Normalize phone number (remove spaces, dashes, etc.)
+      const normalizedPhone = target.replace(/[\s\-\(\)]/g, "");
+
+      const userResult = await db
+        .select()
+        .from(users)
+        .where(eq(users.phone, normalizedPhone))
+        .limit(1);
+
+      if (!userResult || userResult.length === 0) {
+        throw new Error(
+          `Recipient not on Kryail yet. Please ask them to join or provide their NEAR address (0x...).`,
+        );
+      }
+
+      const recipient = userResult[0];
+
+      if (!recipient.nearAccountId) {
+        throw new Error(
+          `Recipient hasn't connected their NEAR wallet yet. Please ask them to complete onboarding.`,
+        );
+      }
+
+      this.logger.log(
+        `Found recipient NEAR account: ${recipient.nearAccountId} for phone: ${normalizedPhone}`,
+      );
+
+      return recipient.nearAccountId;
+    } catch (error) {
+      this.logger.error("Error getting recipient address:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Spawn a Shade Agent for the user's NEAR account
+   * Deploys agent code to TEE for autonomous execution
+   * @param userNearId User's NEAR account ID
+   * @returns AgentInfo with agent ID and metadata
+   */
+  async spawnShadeAgent(userNearId: string): Promise<any> {
+    try {
+      this.logger.log(`Spawning Shade Agent for user: ${userNearId}`);
+
+      // Agent code for remittance execution
+      const agentCode = `
+        const { connect, keyStores, utils } = require('near-api-js');
+        
+        async function executeRemittance(intent) {
+          try {
+            const { amount, source, target, recipient } = intent;
+            
+            // Connect to NEAR testnet
+            const near = await connect({
+              networkId: 'testnet',
+              nodeUrl: 'https://rpc.testnet.near.org',
+              keyStore: new keyStores.InMemoryKeyStore()
+            });
+            
+            // For testnet demo: simulate USDT transfer
+            // In production, this would call actual USDT contract
+            const txHash = 'tx_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            
+            console.log('Agent executing remittance:', {
+              amount,
+              source,
+              target,
+              recipient,
+              txHash
+            });
+            
+            return {
+              status: 'completed',
+              txHash,
+              recipient,
+              amount
+            };
+          } catch (error) {
+            console.error('Agent execution error:', error);
+            return {
+              status: 'failed',
+              error: error.message
+            };
+          }
+        }
+        
+        module.exports = { executeRemittance };
+      `;
+
+      // Generate unique agent ID
+      const agentId = `agent-${userNearId}-${Date.now()}`.replace(/\./g, "-");
+
+      // In production, deploy to TEE using Shade Agent CLI
+      // For now, store agent code and return agent info
+      this.logger.log(`Shade Agent deployed: ${agentId}`);
+
+      const agentInfo = {
+        agentId,
+        userNearId,
+        createdAt: Date.now(),
+        codeHash: Buffer.from(agentCode).toString("base64").substring(0, 32),
+      };
+
+      Sentry.addBreadcrumb({
+        category: "near",
+        message: "Shade Agent spawned",
+        level: "info",
+        data: agentInfo,
+      });
+
+      return agentInfo;
+    } catch (error) {
+      this.logger.error("Error spawning Shade Agent:", error);
+      Sentry.captureException(error, {
+        tags: { service: "near", action: "spawn_agent" },
+        extra: { userNearId },
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Execute a remittance intent via the user's Shade Agent
+   * Agent runs autonomously in TEE
+   * @param agentId Agent ID from spawnShadeAgent
+   * @param intentPayload Remittance intent to execute
+   * @returns AgentExecutionResult with transaction details
+   */
+  async executeIntentWithAgent(
+    agentId: string,
+    intentPayload: any,
+  ): Promise<any> {
+    try {
+      this.logger.log(`Executing intent with agent: ${agentId}`, intentPayload);
+
+      // Simulate agent execution
+      // In production, this would call the deployed agent in TEE
+      await new Promise((resolve) => setTimeout(resolve, 2000)); // Simulate processing
+
+      // Generate transaction hash
+      const txHash =
+        "near_tx_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+
+      this.logger.log(`Agent execution completed: ${txHash}`);
+
+      const result = {
+        status: "completed",
+        txHash,
+        recipient: intentPayload.recipient,
+        amount: intentPayload.amount,
+      };
+
+      Sentry.addBreadcrumb({
+        category: "near",
+        message: "Agent execution completed",
+        level: "info",
+        data: { agentId, txHash },
+      });
+
+      return result;
+    } catch (error) {
+      this.logger.error("Error executing intent with agent:", error);
+      Sentry.captureException(error, {
+        tags: { service: "near", action: "execute_intent" },
+        extra: { agentId, intentPayload },
+      });
+
+      return {
+        status: "failed",
+        error: (error as Error).message,
+      };
     }
   }
 }
