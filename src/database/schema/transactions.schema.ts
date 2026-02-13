@@ -30,7 +30,7 @@ export const transactions = pgTable("transactions", {
   userId: integer("user_id")
     .references(() => users.id, { onDelete: "cascade" })
     .notNull(),
-  afriexTxId: varchar("afriex_tx_id", { length: 100 }).unique(),
+  externalTxId: varchar("external_tx_id", { length: 255 }),
   type: transactionTypeEnum("type").notNull(),
   amount: numeric("amount", { precision: 18, scale: 6 }).notNull(),
   currency: varchar("currency", { length: 10 }).notNull(),

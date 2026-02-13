@@ -3,10 +3,6 @@ export default () => ({
   database: {
     url: process.env.DATABASE_URL,
   },
-  afriex: {
-    apiKey: process.env.AFRIX_API_KEY,
-    publicKey: process.env.AFRIX_PUBLIC_KEY,
-  },
   redis: {
     url: process.env.REDIS_URL,
     host: process.env.REDIS_HOST || "localhost",

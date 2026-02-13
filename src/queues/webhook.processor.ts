@@ -2,7 +2,7 @@ import { Process, Processor } from "@nestjs/bull";
 import { Logger, Inject, forwardRef } from "@nestjs/common";
 import bull from "bull";
 import * as Sentry from "@sentry/node";
-import { WebhookEvent } from "../afriex/afriex.interface";
+import { WebhookEvent } from "../webhooks/webhook.interface";
 import { PaymentsService } from "../payments/payments.service";
 import { UsersService } from "../users/users.service";
 
@@ -24,7 +24,6 @@ export class WebhookProcessor {
 
     try {
       switch (event) {
-
         case "TRANSACTION.CREATED":
           await this.handleTransactionCreated(data);
           break;

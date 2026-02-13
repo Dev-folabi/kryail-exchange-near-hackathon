@@ -11,7 +11,6 @@ import { NotificationsService } from "./notifications.service";
 import { RedisModule } from "../redis/redis.module";
 import { AuthModule } from "../auth/auth.module";
 import { UsersModule } from "../users/users.module";
-import { AfriexModule } from "../afriex/afriex.module";
 import { DatabaseModule } from "../database/database.module";
 import { PaymentsModule } from "../payments/payments.module";
 import { CommonModule } from "../common/common.module";
@@ -28,7 +27,6 @@ import { QueuesModule } from "../queues/queues.module";
     RedisModule,
     AuthModule,
     UsersModule,
-    AfriexModule,
     DatabaseModule,
     forwardRef(() => PaymentsModule),
     NearModule,

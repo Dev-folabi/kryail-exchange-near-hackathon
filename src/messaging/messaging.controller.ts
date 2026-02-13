@@ -23,10 +23,6 @@ export class MessagingController {
     private readonly twilioService: TwilioService,
   ) {}
 
-  /**
-   * Twilio WhatsApp webhook endpoint
-   * Receives incoming messages and sends replies
-   */
   @Post("twilio")
   @UseGuards(ThrottlerGuard)
   async handleTwilioWebhook(
@@ -34,7 +30,6 @@ export class MessagingController {
     @Body() body: messagingInterface.TwilioIncoming,
   ): Promise<{ success: boolean }> {
     try {
-      // Verify Twilio signature
       const signature = req.headers["x-twilio-signature"] as string;
 
       const protocol =

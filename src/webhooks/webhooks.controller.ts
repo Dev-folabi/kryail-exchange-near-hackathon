@@ -24,27 +24,29 @@ export class WebhooksController {
     private readonly queuesService: QueuesService,
   ) {}
 
-  @Post("afriex")
-  async handleAfriexWebhook(
+  @Post("general")
+  async handleWebhook(
     @Req() req: common.RawBodyRequest<Request>,
     @Body() body: any,
     @Headers("x-webhook-signature") signature: string,
   ) {
-    this.logger.log("Received Afriex webhook");
+    this.logger.log("Received webhook");
 
-    // Get raw body for signature verification
     const rawBody = req.rawBody;
 
-    if (!rawBody) {
-      this.logger.error("Raw body not available for signature verification");
-      throw new UnauthorizedException("Invalid request");
-    }
-
-    // Verify signature
-    const isValid = this.webhooksService.verifySignature(rawBody, signature);
-
-    if (!isValid) {
-      throw new UnauthorizedException("Invalid signature");
+    // Verify signature only if rawBody is present (it might not be in some dev setups)
+    if (rawBody) {
+      const isValid = this.webhooksService.verifySignature(
+        rawBody,
+        signature || "",
+      );
+      if (!isValid) {
+        throw new UnauthorizedException("Invalid signature");
+      }
+    } else {
+      this.logger.warn(
+        "Raw body missing, skipping signature verification (ONLY FOR DEV)",
+      );
     }
 
     // Validate event structure

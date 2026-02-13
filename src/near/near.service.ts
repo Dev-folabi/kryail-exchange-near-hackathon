@@ -90,7 +90,7 @@ export class NearService {
       const walletUrl = new URL(`${this.config.walletUrl}/login`);
       walletUrl.searchParams.set("success_url", callbackUrl);
       walletUrl.searchParams.set("failure_url", callbackUrl);
-      walletUrl.searchParams.set("public_key", ""); // Not needed for just account linking
+      walletUrl.searchParams.set("public_key", "");
 
       // Add state to success URL
       const successUrl = new URL(callbackUrl);
@@ -465,7 +465,6 @@ export class NearService {
     target: string = "NGN",
   ): Promise<{ rate: number; estimatedAmount: number }> {
     // Mock rates for demo
-    // In production, fetch from Oracle or Exchange API
     const rates: Record<string, number> = {
       USD: 1600,
       GBP: 2050,
@@ -473,7 +472,7 @@ export class NearService {
       CAD: 1150,
     };
 
-    const rate = rates[source] || 1500; // Default fallback
+    const rate = rates[source] || 1500;
     const estimatedAmount = amount * rate;
 
     return {

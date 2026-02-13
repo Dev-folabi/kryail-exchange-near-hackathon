@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { InjectQueue } from "@nestjs/bull";
 import type { Queue } from "bull";
-import { WebhookEvent } from "../afriex/afriex.interface";
+import { WebhookEvent } from "../webhooks/webhook.interface";
 
 @Injectable()
 export class QueuesService {

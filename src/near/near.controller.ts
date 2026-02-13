@@ -14,8 +14,6 @@ import { Throttle, ThrottlerGuard } from "@nestjs/throttler";
 import * as Sentry from "@sentry/node";
 import { NearService } from "./near.service";
 import { UsersService } from "../users/users.service";
-import { MessagingService } from "../messaging/messaging.service";
-import { ConnectCallbackDto } from "./near.interface";
 
 @Controller("near")
 @UseGuards(ThrottlerGuard)

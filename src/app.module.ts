@@ -6,7 +6,6 @@ import configuration from "./config/configuration";
 
 import { DatabaseModule } from "./database/database.module";
 import { AuthModule } from "./auth/auth.module";
-import { AfriexModule } from "./afriex/afriex.module";
 import { PaymentsModule } from "./payments/payments.module";
 import { WebhooksModule } from "./webhooks/webhooks.module";
 import { RedisModule } from "./redis/redis.module";
@@ -54,7 +53,6 @@ import { BullModule } from "@nestjs/bull";
     ]),
     DatabaseModule,
     AuthModule,
-    AfriexModule,
     PaymentsModule,
     WebhooksModule,
     RedisModule,

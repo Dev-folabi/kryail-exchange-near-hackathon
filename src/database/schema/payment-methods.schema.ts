@@ -20,9 +20,9 @@ export const paymentMethods = pgTable("payment_methods", {
   userId: integer("user_id")
     .references(() => users.id, { onDelete: "cascade" })
     .notNull(),
-  afriexPaymentMethodId: varchar("afriex_payment_method_id", {
-    length: 100,
-  }).unique(),
+  externalPaymentMethodId: varchar("external_payment_method_id", {
+    length: 255,
+  }),
   type: paymentMethodTypeEnum("type").notNull(),
   currency: varchar("currency", { length: 20 }),
   asset: varchar("asset", { length: 20 }),

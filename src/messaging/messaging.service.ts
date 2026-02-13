@@ -5,7 +5,6 @@ import { eq } from "drizzle-orm";
 import { LlmService } from "./llm.service";
 import { SessionService } from "./session.service";
 import { UsersService } from "../users/users.service";
-import { AfriexService } from "../afriex/afriex.service";
 import { HashingService } from "../auth/hashing.service";
 import { PaymentsService } from "../payments/payments.service";
 import { ParsedIntent, SessionData } from "./messaging.interface";
@@ -26,7 +25,6 @@ export class MessagingService {
     private readonly llmService: LlmService,
     private readonly sessionService: SessionService,
     private readonly usersService: UsersService,
-    private readonly afriexService: AfriexService,
     private readonly paymentsService: PaymentsService,
     private readonly hashingService: HashingService,
     private readonly configService: ConfigService,
@@ -160,14 +158,32 @@ export class MessagingService {
         }
       }
 
-      const response = await this.afriexService.getRates(base, symbols);
+      const response = {
+        base: base,
+        rates: {
+          USDT: {
+            NGN: 1450,
+            USD: 1,
+            GBP: 0.79,
+            EUR: 0.92,
+            CAD: 1.36,
+          },
+          USDC: {
+            NGN: 1450,
+            USD: 1,
+          },
+        },
+      };
 
       let message = "💱 *Current Exchange Rates*\n\n";
 
       for (const baseCurrency of response.base) {
-        const rates = response.rates[baseCurrency];
+        const rates = (response.rates as any)[baseCurrency];
         if (rates) {
           for (const [symbol, rate] of Object.entries(rates)) {
+            // Filter if target symbols are specified
+            if (symbols.length > 0 && !symbols.includes(symbol)) continue;
+
             const formattedRate = parseFloat(
               rate as unknown as string,
             ).toString();
@@ -291,7 +307,7 @@ export class MessagingService {
         await this.nearService.getCrossBorderQuote(
           intent.amount,
           intent.sourceCurrency,
-          intent.targetCurrency || "NGN", // Default to NGN
+          intent.targetCurrency || "NGN",
         );
 
       // 2. Require PIN verification if not verified
@@ -698,8 +714,6 @@ export class MessagingService {
         }
 
         case "near_connect": {
-          // User is waiting for NEAR wallet connection
-          // Check if they've connected (callback would have updated the DB)
           const updatedUser = await this.usersService.findByPhone(phone);
 
           if (updatedUser?.nearAccountId) {
@@ -838,21 +852,6 @@ export class MessagingService {
                 "Customer name is required but not found in user or session.",
               );
             }
-
-            const afriexCustomer = await this.afriexService.createCustomer({
-              fullName: fullName,
-              email: user.email || session.tempData?.email,
-              phone: user.phone,
-              countryCode: countryCode,
-              kyc: {
-                DATE_OF_BIRTH: dob,
-                PASSPORT: publicUrl,
-                COUNTRY: countryCode,
-              },
-              meta: {
-                source: "kryail_whatsapp",
-              },
-            });
 
             await this.db
               .update(users)

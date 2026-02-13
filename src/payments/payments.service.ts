@@ -2,7 +2,7 @@ import { Injectable, Logger, Inject, forwardRef } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as Sentry from "@sentry/node";
 import { eq, and } from "drizzle-orm";
-import { AfriexService } from "../afriex/afriex.service";
+import { MockPaymentService } from "../common/mock-payment.service";
 import { RedisService } from "../redis/redis.service";
 import { NotificationsService } from "../messaging/notifications.service";
 import * as databaseModule from "../database/database.module";
@@ -13,7 +13,7 @@ import { users } from "../database/schema/users.schema";
 import { wallets } from "../database/schema/wallets.schema";
 import { transactions } from "../database/schema/transactions.schema";
 import { paymentMethods } from "../database/schema/payment-methods.schema";
-import { WebhookEvent, CryptoAsset } from "../afriex/afriex.interface";
+import { WebhookEvent } from "../webhooks/webhook.interface";
 import { generateReference } from "../common/utils/reference-generator.util";
 import { QueuesService } from "../queues/queues.service";
 
@@ -23,7 +23,7 @@ export class PaymentsService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly afriexService: AfriexService,
+    private readonly mockPaymentService: MockPaymentService,
     private readonly redisService: RedisService,
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
@@ -39,7 +39,7 @@ export class PaymentsService {
     const [tx] = await this.db
       .select()
       .from(transactions)
-      .where(eq(transactions.afriexTxId, id));
+      .where(eq(transactions.externalTxId, id));
 
     if (!tx) {
       this.logger.warn(`Transaction not found for withdrawal update: ${id}`);
@@ -127,7 +127,7 @@ export class PaymentsService {
     this.logger.log(`Creating transaction record for ${type} ${id}`);
 
     const existingTx = await this.db.query.transactions.findFirst({
-      where: eq(transactions.afriexTxId, id),
+      where: eq(transactions.externalTxId, id),
     });
 
     if (existingTx) {
@@ -139,7 +139,7 @@ export class PaymentsService {
       .select({ userId: paymentMethods.userId })
       .from(paymentMethods)
       .where(
-        eq(paymentMethods.afriexPaymentMethodId, event.data.paymentMethodId),
+        eq(paymentMethods.externalPaymentMethodId, event.data.paymentMethodId),
       );
 
     if (!pm) {
@@ -164,7 +164,7 @@ export class PaymentsService {
 
     await this.db.insert(transactions).values({
       userId: user.id,
-      afriexTxId: id,
+      externalTxId: id,
       type: txType as any,
       amount: amount.toString(),
       currency: currency,
@@ -309,8 +309,6 @@ export class PaymentsService {
       if (!user.hasCompletedOnboarding)
         throw new Error("Please complete onboarding first.");
 
-      // Removed ensureAfriexCustomer call and customerId checks
-
       const isCrypto = ["USDT", "USDC"].includes(dto.currency);
 
       // 1. Check DB Cache
@@ -326,29 +324,28 @@ export class PaymentsService {
       let accountDetails: any = existingMethod;
 
       if (!accountDetails) {
-        // 2. Fetch from Afriex if not in cache
         if (isCrypto) {
-          accountDetails = await this.afriexService.getCryptoWallet(
-            dto.currency as CryptoAsset,
-          );
-          // Save to DB
-          await this.db.insert(paymentMethods).values({
-            userId,
-            afriexPaymentMethodId: accountDetails.paymentMethodId,
-            type: "crypto_wallet",
-            asset: dto.currency,
-            address: accountDetails.address,
-            network: accountDetails.network,
-            metadata: accountDetails,
-          });
-        } else {
-          accountDetails = await this.afriexService.getVirtualAccount(
+          accountDetails = await this.mockPaymentService.getCryptoWallet(
             dto.currency,
           );
           // Save to DB
           await this.db.insert(paymentMethods).values({
             userId,
-            afriexPaymentMethodId: accountDetails.paymentMethodId,
+            externalPaymentMethodId: accountDetails.paymentMethodId,
+            type: "crypto_wallet",
+            asset: dto.currency,
+            address: accountDetails.address,
+            network: "NEAR-Testnet",
+            metadata: accountDetails,
+          });
+        } else {
+          accountDetails = await this.mockPaymentService.getVirtualAccount(
+            dto.currency,
+          );
+          // Save to DB
+          await this.db.insert(paymentMethods).values({
+            userId,
+            externalPaymentMethodId: accountDetails.paymentMethodId,
             type: "virtual_account",
             currency: dto.currency,
             institutionName: accountDetails.institutionName,
@@ -398,7 +395,7 @@ export class PaymentsService {
     this.logger.log(`Processing deposit webhook for tx: ${afriexTxId}`);
 
     const existingTx = await this.db.query.transactions.findFirst({
-      where: eq(transactions.afriexTxId, afriexTxId),
+      where: eq(transactions.externalTxId, afriexTxId),
     });
 
     if (existingTx && existingTx.status === "completed") {
@@ -411,7 +408,7 @@ export class PaymentsService {
     const [pm] = await this.db
       .select({ userId: paymentMethods.userId })
       .from(paymentMethods)
-      .where(eq(paymentMethods.afriexPaymentMethodId, paymentMethodId));
+      .where(eq(paymentMethods.externalPaymentMethodId, paymentMethodId));
 
     if (!pm) {
       this.logger.error(
@@ -424,7 +421,7 @@ export class PaymentsService {
       where: eq(users.id, pm.userId),
     });
 
-    if(!user){
+    if (!user) {
       this.logger.error(
         `User for payment method ${paymentMethodId} not found.`,
       );
@@ -432,11 +429,13 @@ export class PaymentsService {
     }
 
     // Convert to USDT
-    const rateResponse = await this.afriexService.getRates(
+    const rateResponse = await this.mockPaymentService.getRates(
       ["USDT"],
       [currency],
     );
-    const rate = parseFloat(rateResponse.rates["USDT"][currency] as any);
+    const rate = parseFloat(
+      (rateResponse.rates["USDT"] as any)[currency] as unknown as string,
+    );
 
     const creditAmount = amount / rate;
     const assetToCredit = "USDT";
@@ -547,11 +546,11 @@ export class PaymentsService {
       let amountToReceive = dto.amount;
 
       if ((dto.asset as string) !== (dto.currency as string)) {
-        const rates = await this.afriexService.getRates(
+        const rates = await this.mockPaymentService.getRates(
           [dto.asset],
           [dto.currency],
         );
-        const rate = parseFloat(rates.rates[dto.asset][dto.currency] as any);
+        const rate = parseFloat((rates.rates[dto.asset] as any)[dto.currency]);
         amountToReceive = dto.amount * rate;
         this.logger.log(
           "Quote: " +
@@ -575,8 +574,8 @@ export class PaymentsService {
         );
       }
 
-      // 3. Create Transaction on Afriex
-      const afriexTx = await this.afriexService.createTransaction({
+      // 3. Create Transaction on Mock/NEAR
+      const afriexTx = await this.mockPaymentService.createTransaction({
         customerId: "", // No longer tracking customerId locally
         destinationAmount: amountToReceive,
         currency: dto.currency,
@@ -595,7 +594,7 @@ export class PaymentsService {
 
         await tx.insert(transactions).values({
           userId,
-          afriexTxId: afriexTx.transactionId,
+          externalTxId: afriexTx.transactionId,
           type: "withdrawal",
           amount: dto.amount.toString(),
           currency: dto.asset,
